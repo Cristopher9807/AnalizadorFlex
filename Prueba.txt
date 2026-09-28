@@ -1,0 +1,11 @@
+entero x = 5;
+decimal y = 3.14;
+si (x <= 10 Y y > 1) {
+    retorno x + y;
+} sino {
+    retorno 0;
+}
+// esto es un comentario
+texto mensaje = "hola mundo";
+
+entero z = 5 @ 3;
