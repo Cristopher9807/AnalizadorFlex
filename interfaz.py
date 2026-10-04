@@ -5,8 +5,14 @@ import subprocess
 
 from parser import tokens_desde_salida, analizar_sintaxis
 
-CARPETA = os.path.dirname(os.path.abspath(__file__))
-EJECUTABLE = os.path.join(CARPETA, "analizador.exe")
+import sys
+
+if getattr(sys, "frozen", False):
+    CARPETA = os.path.dirname(os.path.abspath(sys.executable))
+    EJECUTABLE = os.path.join(sys._MEIPASS, "analizador.exe")
+else:
+    CARPETA = os.path.dirname(os.path.abspath(__file__))
+    EJECUTABLE = os.path.join(CARPETA, "analizador.exe")
 
 ventana = tk.Tk()
 ventana.title("Analizador Léxico / Sintáctico")

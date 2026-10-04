@@ -1,5 +1,6 @@
 entero  x = 52;
 
-si x <= 10 {
+si ( x <= 10 {
     retorno x;
 }
+
