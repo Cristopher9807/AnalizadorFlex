@@ -3,12 +3,14 @@ from tkinter import ttk, messagebox, simpledialog
 import os
 import subprocess
 
+from parser import tokens_desde_salida, analizar_sintaxis
+
 CARPETA = os.path.dirname(os.path.abspath(__file__))
 EJECUTABLE = os.path.join(CARPETA, "analizador.exe")
 
 ventana = tk.Tk()
-ventana.title("Analizador Léxico")
-ventana.geometry("1100x650")
+ventana.title("Analizador Léxico / Sintáctico")
+ventana.geometry("1100x800")
 
 archivo_actual = {"nombre": None}
 
@@ -38,7 +40,7 @@ def al_seleccionar_archivo(event):
     texto_entrada.delete("1.0", tk.END)
     texto_entrada.insert(tk.END, contenido)
     archivo_actual["nombre"] = nombre
-    ventana.title(f"Analizador Léxico - {nombre}")
+    ventana.title(f"Analizador - {nombre}")
 
 lista_archivos.bind("<<ListboxSelect>>", al_seleccionar_archivo)
 
@@ -56,7 +58,7 @@ def nuevo_archivo():
     cargar_lista()
     texto_entrada.delete("1.0", tk.END)
     archivo_actual["nombre"] = nombre
-    ventana.title(f"Analizador Léxico - {nombre}")
+    ventana.title(f"Analizador - {nombre}")
 
 def eliminar_archivo():
     seleccion = lista_archivos.curselection()
@@ -69,7 +71,7 @@ def eliminar_archivo():
         cargar_lista()
         texto_entrada.delete("1.0", tk.END)
         archivo_actual["nombre"] = None
-        ventana.title("Analizador Léxico")
+        ventana.title("Analizador - Léxico / Sintáctico")
 
 def guardar_archivo(mostrar_aviso=True):
     if not archivo_actual["nombre"]:
@@ -92,9 +94,25 @@ tk.Button(botones_frame, text="Eliminar", command=eliminar_archivo).pack(side="l
 panel_derecho = tk.Frame(ventana)
 panel_derecho.pack(side="left", fill="both", expand=True, padx=10, pady=10)
 
+# --- Selector de modo de análisis ---
+modo_frame = tk.Frame(panel_derecho)
+modo_frame.pack(fill="x", pady=(0, 8))
+
+tk.Label(modo_frame, text="Analizador:").pack(side="left")
+
+modo_var = tk.StringVar(value="Léxico")
+combo_modo = ttk.Combobox(
+    modo_frame,
+    textvariable=modo_var,
+    values=["Léxico", "Sintáctico"],
+    state="readonly",
+    width=15
+)
+combo_modo.pack(side="left", padx=5)
+
 tk.Label(panel_derecho, text="Contenido del archivo:").pack(anchor="w")
 
-texto_entrada = tk.Text(panel_derecho, height=12)
+texto_entrada = tk.Text(panel_derecho, height=10)
 texto_entrada.pack(fill="both", expand=True)
 
 acciones_frame = tk.Frame(panel_derecho)
@@ -123,22 +141,59 @@ def analizar():
     for fila in tabla_tokens.get_children():
         tabla_tokens.delete(fila)
 
-    lineas = resultado.stdout.splitlines()
-    for linea in lineas:
+    hay_error_lexico = False
+    for linea in resultado.stdout.splitlines():
         if "\t" in linea:
             tipo, valor = linea.split("\t", 1)
             tabla_tokens.insert("", tk.END, values=(tipo, valor))
+            if tipo == "ERROR_LEXICO":
+                hay_error_lexico = True
+
+    texto_resultado_sintactico.config(state="normal")
+    texto_resultado_sintactico.delete("1.0", tk.END)
+
+    if modo_var.get() == "Sintáctico":
+        if hay_error_lexico:
+            texto_resultado_sintactico.insert(
+                tk.END,
+                "No se puede analizar la sintaxis: hay errores léxicos en el archivo. Corrígelos primero.\n"
+            )
+        else:
+            tokens = tokens_desde_salida(resultado.stdout)
+            aceptado, log, error = analizar_sintaxis(tokens)
+
+            texto_resultado_sintactico.insert(tk.END, "--- Derivación paso a paso ---\n")
+            for paso in log:
+                texto_resultado_sintactico.insert(tk.END, paso + "\n")
+            texto_resultado_sintactico.insert(tk.END, "\n--- Resultado ---\n")
+
+            if aceptado:
+                texto_resultado_sintactico.insert(tk.END, "Cadena ACEPTADA (sintaxis correcta)\n")
+            else:
+                texto_resultado_sintactico.insert(tk.END, f"ERROR DE SINTAXIS: {error}\n")
+    else:
+        texto_resultado_sintactico.insert(
+            tk.END,
+            "Modo Léxico: solo se muestra la tabla de tokens. Cambia a 'Sintáctico' en el desplegable para ver la derivación."
+        )
+
+    texto_resultado_sintactico.config(state="disabled")
 
 tk.Button(acciones_frame, text="Analizar", command=analizar, bg="#00b894", fg="white").pack(side="left", padx=5)
 
 tk.Label(panel_derecho, text="Tokens generados:").pack(anchor="w", pady=(10, 0))
 
-tabla_tokens = ttk.Treeview(panel_derecho, columns=("tipo", "valor"), show="headings", height=15)
+tabla_tokens = ttk.Treeview(panel_derecho, columns=("tipo", "valor"), show="headings", height=8)
 tabla_tokens.heading("tipo", text="Tipo de Token")
 tabla_tokens.heading("valor", text="Valor")
 tabla_tokens.column("tipo", width=200)
 tabla_tokens.column("valor", width=400)
 tabla_tokens.pack(fill="both", expand=True)
+
+tk.Label(panel_derecho, text="Resultado del análisis sintáctico:").pack(anchor="w", pady=(10, 0))
+
+texto_resultado_sintactico = tk.Text(panel_derecho, height=10, state="disabled")
+texto_resultado_sintactico.pack(fill="both", expand=True)
 
 cargar_lista()
 

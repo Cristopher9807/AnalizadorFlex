@@ -8,4 +8,7 @@ si (x <= 10 Y y > 1) {
 // esto es un comentario
 texto mensaje = "hola mundo";
 
-entero z = 5 @ 3;
+entero z = 3;
+
+
+

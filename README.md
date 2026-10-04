@@ -73,6 +73,62 @@ win_flex analizador.l
 gcc lex.yy.c -o analizador.exe
 
 
+## Análisis sintáctico
+
+Además del análisis léxico, el proyecto incluye un **analizador sintáctico**
+implementado en Python (`parser.py`), integrado en la misma interfaz
+gráfica. En la interfaz hay un desplegable **"Analizador"** con dos opciones:
+
+- **Léxico**: comportamiento original, solo muestra la tabla de tokens.
+- **Sintáctico**: además de los tokens, ejecuta el analizador sintáctico
+  sobre esos mismos tokens y muestra, en un panel nuevo, la derivación
+  paso a paso y el veredicto final (cadena aceptada o el error de sintaxis
+  encontrado, indicando qué se esperaba y qué se encontró).
+
+Si el archivo analizado tiene algún `ERROR_LEXICO`, el análisis sintáctico
+no se ejecuta — primero hay que corregir el error léxico.
+
+### Gramática reconocida
+
+El analizador sintáctico se implementó como un **analizador descendente
+predictivo (descenso recursivo)**: una función por cada no terminal, que
+decide qué producción aplicar mirando el token actual. La gramática es la
+siguiente:
+
+programa → listaInstr
+listaInstr → instr listaInstr | ε
+instr → declaracion | asignacion | si | mientras | retorno
+tipo → entero | decimal | texto
+declaracion → tipo id = expr ;
+asignacion → id = expr ;
+si → si ( expr ) bloque sinoOpt
+sinoOpt → sino bloque | ε
+mientras → mientras ( expr ) bloque
+retorno → retorno expr ;
+bloque → { listaInstr }
+
+expr → exprOr
+exprOr → exprAnd { O exprAnd }
+exprAnd → exprRel { Y exprRel }
+exprRel → exprAr [ OPREL exprAr ]
+exprAr → term { (+|-) term }
+term → factor { (*|/|%) factor }
+factor → ( expr ) | id | numero_entero | numero_decimal | cadena
+
+
+Esta gramática no tiene recursividad por la izquierda y cada alternativa se
+puede elegir viendo un solo token de anticipación, por lo que es apta para
+análisis descendente predictivo sin necesidad de retroceso (*backtracking*).
+
+
+### Casos de prueba (sintáctico)
+
+| Entrada | Resultado esperado | Resultado obtenido |
+| --- | --- | --- |
+| Programa completo con declaraciones, `si/sino`, `retorno`, comentario y cadena | Aceptada | ✔️ Aceptada |
+| `entero x = 52` (sin `;`) | Error de sintaxis, falta `;` | ✔️ `Se esperaba ';' pero se encontró '$'` |
+| `si x <= 10 { retorno x; }` (sin `(` después de `si`) | Error de sintaxis, falta `(` | ✔️ `Se esperaba '(' pero se encontró 'x'` |
+
 ## Estructura del proyecto
 
 - `analizador.l` — código fuente del analizador léxico, escrito en Flex.
@@ -80,6 +136,16 @@ gcc lex.yy.c -o analizador.exe
 - `analizador.exe` — ejecutable ya compilado del analizador léxico.
 - `interfaz.py` — interfaz gráfica en Python/Tkinter que gestiona los archivos y ejecuta el analizador.
 - `iniciar.bat` — lanzador que abre la interfaz gráfica sin mostrar consola.
+
+## Archivos agregados para el análisis sintáctico
+
+- `parser.py` — analizador sintáctico (descenso recursivo) en Python.
+  Recibe la lista de tokens que produce `analizador.exe` y determina si
+  forman un programa válido según la gramática de la sección
+  "Análisis sintáctico", generando además el log de derivación paso a paso.
+- `interfaz.py` se amplió con un selector **"Analizador: Léxico / Sintáctico"**
+  y un panel nuevo que muestra el resultado del análisis sintáctico cuando
+  ese modo está seleccionado.
 
 ## Autor
 

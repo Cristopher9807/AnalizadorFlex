@@ -1,2 +1,5 @@
-entero = 52@
-entero = sw
+entero  x = 52;
+
+si x <= 10 {
+    retorno x;
+}
