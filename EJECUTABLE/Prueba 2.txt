@@ -1,6 +1,10 @@
 entero  x = 52;
 
-si ( x <= 10 {
-    retorno x;
-}
+si ( x <= 10 ){
+
+    retorno x;}
+
+
+
+
 

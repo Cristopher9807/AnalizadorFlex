@@ -1,9 +1,10 @@
-# Analizador Léxico y Sintáctico - Flex + Python (GUI)
+# Analizador Léxico, Sintáctico y Semántico - Flex + Python (GUI)
 
 Proyecto de la materia de Compiladores. Implementa un analizador
-léxico usando **Flex**, y un analizador sintáctico (descenso recursivo)
-en **Python**, con una interfaz gráfica en **Python/Tkinter** que permite
-crear, editar, eliminar y analizar archivos de texto, sin usar la consola.
+léxico usando **Flex**, un analizador sintáctico (descenso recursivo) y un
+analizador semántico (tabla de símbolos y verificación de tipos) en
+**Python**, con una interfaz gráfica en **Python/Tkinter** que permite
+crear, abrir, editar, eliminar y analizar archivos de texto, sin usar la consola.
 
 ## Requisitos
 
@@ -13,6 +14,8 @@ crear, editar, eliminar y analizar archivos de texto, sin usar la consola.
   Tkinter por defecto en Windows).
 - (Opcional, solo si se desea recompilar el analizador léxico) Flex y GCC —
   por ejemplo mediante MSYS2/MinGW (`win_flex`, `gcc`).
+- (Opcional, solo si se desea regenerar el ejecutable) PyInstaller
+  (`pip install pyinstaller`).
 
 ## Cómo ejecutar
 
@@ -26,18 +29,35 @@ crear, editar, eliminar y analizar archivos de texto, sin usar la consola.
 1. Asegúrate de tener Python 3.x instalado.
 2. Abre una terminal en la carpeta del proyecto y corre:
 
+```
 python interfaz.py
+```
 
+Al correr desde el código fuente, la interfaz lee y guarda los archivos
+`.txt` en la carpeta `EJECUTABLE/`, igual que lo hace el ejecutable, de modo
+que se ven los mismos archivos en ambos casos.
 
 En cualquiera de los dos casos, la interfaz permite:
 - Ver la lista de archivos `.txt` de la carpeta.
 - Crear un archivo nuevo (**Nuevo**).
+- Abrir un archivo `.txt` de cualquier ubicación (**Abrir...**): se copia a
+  la carpeta de trabajo y queda en la lista.
 - Editar el contenido de un archivo seleccionado.
 - Guardar los cambios (**Guardar**).
 - Eliminar un archivo (**Eliminar**).
-- Elegir, en el desplegable **Analizador**, entre **Léxico** o **Sintáctico**.
+- Elegir, en el desplegable **Analizador**, entre **Léxico**, **Sintáctico**
+  o **Semántico**. Al cambiar de analizador, el archivo abierto se guarda y
+  se mantiene en el editor.
 - Analizar el archivo abierto (**Analizar**), mostrando los tokens
-  generados y, en modo Sintáctico, la derivación paso a paso y el veredicto.
+  generados y, según el modo: la derivación paso a paso y el veredicto
+  (Sintáctico), o la tabla de símbolos, las comprobaciones y los errores
+  semánticos (Semántico).
+
+**Filtrado de archivos por analizador:** en modo **Semántico** la lista
+muestra los archivos cuyo nombre empieza por `Semantico`; en modo Léxico y
+Sintáctico muestra el resto. Los archivos abiertos con **Abrir...** o creados
+en la sesión se muestran siempre. Si se crea un archivo nuevo en modo
+Semántico, el programa le agrega el prefijo `Semantico` automáticamente.
 
 ## Lenguaje reconocido por el analizador
 
@@ -68,6 +88,7 @@ El analizador léxico reconoce los siguientes elementos:
 
 ### Ejemplo de código de prueba
 
+```
 entero x = 5;
 decimal y = 3.14;
 si (x <= 10 Y y > 1) {
@@ -77,27 +98,29 @@ retorno 0;
 }
 // esto es un comentario
 texto mensaje = "hola mundo";
-
+```
 
 ## Cómo recompilar el analizador léxico (opcional)
 
 Si se modifica `analizador.l`, hay que regenerar el ejecutable:
 
+```
 win_flex analizador.l
 gcc lex.yy.c -o analizador.exe
-
+```
 
 ## Análisis sintáctico
 
 Además del análisis léxico, el proyecto incluye un **analizador sintáctico**
 implementado en Python (`parser.py`), integrado en la misma interfaz
-gráfica. En la interfaz hay un desplegable **"Analizador"** con dos opciones:
+gráfica. En la interfaz hay un desplegable **"Analizador"** con tres opciones:
 
 - **Léxico**: comportamiento original, solo muestra la tabla de tokens.
 - **Sintáctico**: además de los tokens, ejecuta el analizador sintáctico
   sobre esos mismos tokens y muestra, en un panel nuevo, la derivación
   paso a paso y el veredicto final (cadena aceptada o el error de sintaxis
   encontrado, indicando qué se esperaba y qué se encontró).
+- **Semántico**: ver la sección "Análisis semántico".
 
 Si el archivo analizado tiene algún `ERROR_LEXICO`, el análisis sintáctico
 no se ejecuta — primero hay que corregir el error léxico.
@@ -109,6 +132,7 @@ predictivo (descenso recursivo)**: una función por cada no terminal, que
 decide qué producción aplicar mirando el token actual. La gramática es la
 siguiente:
 
+```
 programa → listaInstr
 listaInstr → instr listaInstr | ε
 instr → declaracion | asignacion | si | mientras | retorno
@@ -128,7 +152,7 @@ exprRel → exprAr [ OPREL exprAr ]
 exprAr → term { (+|-) term }
 term → factor { (*|/|%) factor }
 factor → ( expr ) | id | numero_entero | numero_decimal | cadena
-
+```
 
 Esta gramática no tiene recursividad por la izquierda y cada alternativa se
 puede elegir viendo un solo token de anticipación, por lo que es apta para
@@ -148,6 +172,92 @@ lenguaje no existe forma de escribir esa construcción ambigua.
 | `entero x = 52` (sin `;`) | Error de sintaxis, falta `;` | ✔️ `Se esperaba ';' pero se encontró '$'` |
 | `si x <= 10 { retorno x; }` (sin `(` después de `si`) | Error de sintaxis, falta `(` | ✔️ `Se esperaba '(' pero se encontró 'x'` |
 
+## Análisis semántico
+
+El **analizador semántico** está implementado en Python (`semantico.py`) e
+integrado en la misma interfaz (modo **Semántico**). Revisa que un programa
+que ya es sintácticamente correcto además tenga sentido: que las variables
+existan, que los tipos sean compatibles y que las condiciones sean válidas.
+
+Para que se ejecute, el archivo no debe tener errores léxicos ni de sintaxis;
+si los tiene, la interfaz los informa y no hace el análisis semántico.
+
+### Cómo funciona
+
+- **Tabla de símbolos:** una pila de ámbitos. Cada `{ }` abre un ámbito nuevo
+  y al cerrarlo se descartan las variables declaradas dentro. Cada declaración
+  se guarda con su nombre, tipo y nivel de ámbito.
+- **Atributos:** el tipo de cada expresión se calcula de abajo hacia arriba
+  (atributo sintetizado, devuelto por cada función de expresión) y el ámbito
+  se pasa de arriba hacia abajo (atributo heredado, la pila de ámbitos).
+- **Errores:** se acumulan todos, sin detenerse en el primero. Cuando una
+  expresión tiene error, su tipo pasa a `error` para no provocar errores en
+  cascada.
+
+### Reglas verificadas
+
+| Regla | Ejemplo con error |
+| --- | --- |
+| No se puede declarar dos veces una variable en el mismo ámbito | `entero x = 5; entero x = 6;` |
+| Toda variable debe estar declarada antes de usarse | `entero r = y + 1;` |
+| El valor asignado debe ser compatible con el tipo de la variable | `texto t = 10;` |
+| `entero` cabe en `decimal`, pero no al revés | `entero x = 1.5;` |
+| `entero` operado con `decimal` da `decimal` | `x + y` con `y` decimal |
+| `texto + texto` es concatenación | `"a" + "b"` |
+| Las comparaciones dan `booleano` y comparan número con número o texto con texto | `1 < "a"` |
+| `Y` y `O` solo aceptan `booleano` | `x Y 1` |
+| La condición de `si` y `mientras` debe ser `booleano` | `mientras (x)` |
+| Una variable no existe fuera del bloque donde se declaró | usar `a` fuera de su `{ }` |
+
+### Salida en la interfaz
+
+En modo **Semántico** el panel de resultados muestra:
+
+1. La **tabla de símbolos** (nombre, tipo y ámbito de cada variable).
+2. Las **comprobaciones realizadas**.
+3. El **resultado**: `ANÁLISIS SEMÁNTICO CORRECTO` o la lista de errores
+   semánticos encontrados.
+
+### Casos de prueba (semántico)
+
+Archivos incluidos en `EJECUTABLE/`:
+
+| Archivo | Resultado esperado |
+| --- | --- |
+| `Semantico correcto.txt` | ✔️ Análisis semántico correcto |
+| `Semantico errores.txt` | ✔️ 6 errores semánticos |
+
+Contenido de `Semantico correcto.txt`:
+
+```
+entero x = 5;
+decimal y = 2.5;
+texto nombre = "Criss";
+decimal z = x + y;
+si (z > 3) {
+    entero w = x * 2;
+    x = w;
+}
+```
+
+Contenido de `Semantico errores.txt` (variable repetida, tipo incompatible,
+variable no declarada, condición no booleana, decimal asignado a entero y
+variable usada fuera de su ámbito):
+
+```
+entero x = 5;
+entero x = 6;
+texto t = 10;
+entero r = y + 1;
+mientras (x) {
+    x = 1.5;
+}
+si (1 < 2) {
+    entero a = 1;
+}
+a = 2;
+```
+
 ## Ejecutable
 
 Además del código fuente, el proyecto incluye un ejecutable autosuficiente
@@ -156,20 +266,23 @@ Además del código fuente, el proyecto incluye un ejecutable autosuficiente
 - `EJECUTABLE/AnalizadorCompiladores.exe` — ejecutable final. Incluye
   empaquetado adentro el analizador léxico (`analizador.exe`). Al abrirlo,
   gestiona los archivos `.txt` que estén en esa misma carpeta (por eso
-  `Prueba.txt` y `Prueba 2.txt` están ahí también, como ejemplos listos
-  para probar).
+  `Prueba.txt`, `Prueba 2.txt` y los archivos `Semantico *.txt` están ahí
+  también, como ejemplos listos para probar).
 
 ### Cómo regenerar el ejecutable (opcional)
 
-Si se modifica el código fuente, el ejecutable se vuelve a generar con:
+El ejecutable es una copia del código del momento en que se generó: si se
+modifica algún `.py`, hay que volver a generarlo. Para eso basta con hacer
+doble clic en `generar_exe.bat`, que cierra el programa si está abierto y
+genera el ejecutable directamente en `EJECUTABLE/`.
 
-pip install pyinstaller
-pyinstaller --onefile --windowed --add-data "analizador.exe;." --name AnalizadorCompiladores interfaz.py
+Equivale a ejecutar (requiere `pip install pyinstaller`):
 
+```
+python -m PyInstaller --noconfirm --onefile --windowed --add-data "analizador.exe;." --name AnalizadorCompiladores --distpath EJECUTABLE interfaz.py
+```
 
-El resultado queda en `dist/AnalizadorCompiladores.exe` (luego se puede
-mover/renombrar la carpeta `dist` a `EJECUTABLE` si se desea). La
-configuración de este empaquetado queda guardada en
+La configuración de este empaquetado queda guardada en
 `AnalizadorCompiladores.spec`.
 
 ## Estructura del proyecto
@@ -188,9 +301,15 @@ configuración de este empaquetado queda guardada en
   Recibe la lista de tokens que produce `analizador.exe` y determina si
   forman un programa válido según la gramática de la sección
   "Análisis sintáctico", generando además el log de derivación paso a paso.
+- `semantico.py` — analizador semántico en Python. Recibe los mismos tokens
+  y, con una tabla de símbolos por ámbitos, verifica declaraciones, usos de
+  variables y compatibilidad de tipos, devolviendo la tabla de símbolos, el
+  log de comprobaciones y la lista de errores.
 - `interfaz.py` — interfaz gráfica en Python/Tkinter que gestiona los
-  archivos, ejecuta el analizador léxico y, si se elige el modo
-  "Sintáctico", también el analizador sintáctico.
+  archivos, ejecuta el analizador léxico y, según el modo elegido
+  ("Sintáctico" o "Semántico"), también el sintáctico y el semántico.
+- `generar_exe.bat` — script que regenera el ejecutable en `EJECUTABLE/`
+  con un doble clic.
 - `AnalizadorCompiladores.spec` — configuración de empaquetado generada por
   PyInstaller, usada para regenerar el ejecutable.
 - `EJECUTABLE/` — carpeta con el ejecutable final

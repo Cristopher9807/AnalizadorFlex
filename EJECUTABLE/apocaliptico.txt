@@ -1,0 +1,9 @@
+entero a = 666;
+entero b = 1666;
+entero c = 66612;
+entero d = 66;
+si (a == 666) {
+    retorno b + c;
+} sino {
+    retorno d;
+}

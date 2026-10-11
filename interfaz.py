@@ -1,24 +1,37 @@
 import tkinter as tk
-from tkinter import ttk, messagebox, simpledialog
+from tkinter import ttk, messagebox, simpledialog, filedialog
 import os
+import shutil
 import subprocess
+import sys
+import unicodedata
 
 from parser import tokens_desde_salida, analizar_sintaxis
-
-import sys
+from semantico import analizar_semantica
 
 if getattr(sys, "frozen", False):
+    # Corriendo como .exe: los .txt están junto al .exe (carpeta EJECUTABLE)
     CARPETA = os.path.dirname(os.path.abspath(sys.executable))
     EJECUTABLE = os.path.join(sys._MEIPASS, "analizador.exe")
 else:
-    CARPETA = os.path.dirname(os.path.abspath(__file__))
-    EJECUTABLE = os.path.join(CARPETA, "analizador.exe")
+    # Corriendo con "python interfaz.py": el analizador.exe está en la raíz del proyecto
+    # y los .txt se leen de la carpeta EJECUTABLE, igual que hace el .exe final.
+    CARPETA_PROYECTO = os.path.dirname(os.path.abspath(__file__))
+    CARPETA = os.path.join(CARPETA_PROYECTO, "EJECUTABLE")
+    os.makedirs(CARPETA, exist_ok=True)
+    EJECUTABLE = os.path.join(CARPETA_PROYECTO, "analizador.exe")
+
+PREFIJO_SEMANTICO = "Semantico"
+TITULO_BASE = "Analizador Léxico / Sintáctico / Semántico"
 
 ventana = tk.Tk()
-ventana.title("Analizador Léxico / Sintáctico")
+ventana.title(TITULO_BASE)
 ventana.geometry("1100x800")
 
 archivo_actual = {"nombre": None}
+
+# Archivos abiertos manualmente: se muestran siempre en la lista, sin importar el filtro del modo
+archivos_extra = set()
 
 # ---------------- Panel izquierdo: lista de archivos ----------------
 panel_izquierdo = tk.Frame(ventana)
@@ -29,11 +42,38 @@ tk.Label(panel_izquierdo, text="Archivos .txt:").pack(anchor="w")
 lista_archivos = tk.Listbox(panel_izquierdo, width=30, height=28)
 lista_archivos.pack()
 
+
+def es_archivo_semantico(nombre):
+    """True si el nombre empieza por 'semantico', ignorando tildes y mayúsculas."""
+    limpio = unicodedata.normalize("NFD", nombre)
+    limpio = "".join(c for c in limpio if unicodedata.category(c) != "Mn")
+    return limpio.lower().startswith("semantico")
+
+
 def cargar_lista():
+    """Modo Semántico: archivos 'Semantico ...'. Otros modos: el resto.
+    Los archivos abiertos con 'Abrir...' se muestran siempre."""
     lista_archivos.delete(0, tk.END)
+    modo_semantico = modo_var.get() == "Semántico"
     for nombre in sorted(os.listdir(CARPETA)):
-        if nombre.endswith(".txt"):
+        if not nombre.endswith(".txt"):
+            continue
+        if es_archivo_semantico(nombre) == modo_semantico or nombre in archivos_extra:
             lista_archivos.insert(tk.END, nombre)
+    seleccionar_en_lista(archivo_actual["nombre"])
+
+
+def seleccionar_en_lista(nombre):
+    """Resalta en la lista el archivo indicado (si está)."""
+    lista_archivos.selection_clear(0, tk.END)
+    if not nombre:
+        return
+    nombres = lista_archivos.get(0, tk.END)
+    if nombre in nombres:
+        indice = nombres.index(nombre)
+        lista_archivos.selection_set(indice)
+        lista_archivos.see(indice)
+
 
 def al_seleccionar_archivo(event):
     seleccion = lista_archivos.curselection()
@@ -48,23 +88,36 @@ def al_seleccionar_archivo(event):
     archivo_actual["nombre"] = nombre
     ventana.title(f"Analizador - {nombre}")
 
+
 lista_archivos.bind("<<ListboxSelect>>", al_seleccionar_archivo)
+
 
 def nuevo_archivo():
     nombre = simpledialog.askstring("Nuevo archivo", "Nombre del archivo (sin .txt):")
     if not nombre:
         return
-    nombre = nombre.strip() + ".txt"
+    nombre = nombre.strip()
+    # Si el usuario ya escribió ".txt", se lo quitamos para no duplicarlo
+    if nombre.lower().endswith(".txt"):
+        nombre = nombre[:-4].strip()
+    if not nombre:
+        return
+    # En modo Semántico el archivo debe llevar el prefijo para que aparezca en la lista
+    if modo_var.get() == "Semántico" and not es_archivo_semantico(nombre):
+        nombre = f"{PREFIJO_SEMANTICO} {nombre}"
+    nombre += ".txt"
     ruta = os.path.join(CARPETA, nombre)
     if os.path.exists(ruta):
         messagebox.showerror("Error", "Ya existe un archivo con ese nombre.")
         return
     with open(ruta, "w", encoding="utf-8") as f:
         f.write("")
-    cargar_lista()
     texto_entrada.delete("1.0", tk.END)
     archivo_actual["nombre"] = nombre
+    archivos_extra.add(nombre)
+    cargar_lista()
     ventana.title(f"Analizador - {nombre}")
+
 
 def eliminar_archivo():
     seleccion = lista_archivos.curselection()
@@ -74,10 +127,13 @@ def eliminar_archivo():
     nombre = lista_archivos.get(seleccion[0])
     if messagebox.askyesno("Confirmar", f"¿Eliminar {nombre}?"):
         os.remove(os.path.join(CARPETA, nombre))
+        archivos_extra.discard(nombre)
+        if archivo_actual["nombre"] == nombre:
+            texto_entrada.delete("1.0", tk.END)
+            archivo_actual["nombre"] = None
+            ventana.title(TITULO_BASE)
         cargar_lista()
-        texto_entrada.delete("1.0", tk.END)
-        archivo_actual["nombre"] = None
-        ventana.title("Analizador - Léxico / Sintáctico")
+
 
 def guardar_archivo(mostrar_aviso=True):
     if not archivo_actual["nombre"]:
@@ -90,10 +146,49 @@ def guardar_archivo(mostrar_aviso=True):
     if mostrar_aviso:
         messagebox.showinfo("Guardado", "Archivo guardado correctamente.")
 
+
+def abrir_archivo():
+    """Abre un .txt de cualquier lugar. Se copia a la carpeta de trabajo
+    y queda en la lista de la izquierda."""
+    ruta = filedialog.askopenfilename(
+        title="Abrir archivo",
+        initialdir=CARPETA,
+        filetypes=[("Archivos de texto", "*.txt"), ("Todos los archivos", "*.*")]
+    )
+    if not ruta:
+        return
+
+    nombre = os.path.basename(ruta)
+    destino = os.path.join(CARPETA, nombre)
+
+    # Si el archivo viene de otra carpeta, se copia a la carpeta de trabajo
+    misma_carpeta = os.path.normcase(os.path.abspath(os.path.dirname(ruta))) == \
+        os.path.normcase(os.path.abspath(CARPETA))
+    if not misma_carpeta:
+        if os.path.exists(destino):
+            if not messagebox.askyesno(
+                "Archivo existente",
+                f"Ya hay un archivo llamado '{nombre}' en la carpeta de trabajo.\n"
+                "¿Reemplazarlo con el que acabas de elegir?"
+            ):
+                return
+        shutil.copy2(ruta, destino)
+
+    with open(destino, "r", encoding="utf-8") as f:
+        contenido = f.read()
+    texto_entrada.delete("1.0", tk.END)
+    texto_entrada.insert(tk.END, contenido)
+    archivo_actual["nombre"] = nombre
+    archivos_extra.add(nombre)
+    cargar_lista()
+    ventana.title(f"Analizador - {nombre}")
+
+
 botones_frame = tk.Frame(panel_izquierdo)
 botones_frame.pack(pady=5, fill="x")
 
 tk.Button(botones_frame, text="Nuevo", command=nuevo_archivo).pack(side="left", expand=True, fill="x")
+tk.Button(botones_frame, text="Abrir...", command=abrir_archivo).pack(side="left", expand=True, fill="x")
 tk.Button(botones_frame, text="Eliminar", command=eliminar_archivo).pack(side="left", expand=True, fill="x")
 
 # ---------------- Panel derecho: editor + tabla de tokens ----------------
@@ -110,11 +205,23 @@ modo_var = tk.StringVar(value="Léxico")
 combo_modo = ttk.Combobox(
     modo_frame,
     textvariable=modo_var,
-    values=["Léxico", "Sintáctico"],
+    values=["Léxico", "Sintáctico", "Semántico"],
     state="readonly",
     width=15
 )
 combo_modo.pack(side="left", padx=5)
+
+
+def al_cambiar_modo(event=None):
+    # Si hay un archivo abierto, se guarda y se mantiene visible y en el editor
+    if archivo_actual["nombre"]:
+        guardar_archivo(mostrar_aviso=False)
+        archivos_extra.add(archivo_actual["nombre"])
+    cargar_lista()
+    etiqueta_resultado.config(text=f"Resultado del análisis {modo_var.get().lower()}:")
+
+
+combo_modo.bind("<<ComboboxSelected>>", al_cambiar_modo)
 
 tk.Label(panel_derecho, text="Contenido del archivo:").pack(anchor="w")
 
@@ -125,6 +232,11 @@ acciones_frame = tk.Frame(panel_derecho)
 acciones_frame.pack(fill="x", pady=5)
 
 tk.Button(acciones_frame, text="Guardar", command=guardar_archivo).pack(side="left", padx=5)
+
+
+def escribir(texto):
+    texto_resultado.insert(tk.END, texto)
+
 
 def analizar():
     if not archivo_actual["nombre"]:
@@ -137,6 +249,7 @@ def analizar():
         messagebox.showerror("Error", "No se encontró analizador.exe en esta carpeta.")
         return
 
+    # ---------- 1) LÉXICO (siempre se ejecuta) ----------
     resultado = subprocess.run(
         [EJECUTABLE, ruta],
         capture_output=True,
@@ -155,35 +268,71 @@ def analizar():
             if tipo == "ERROR_LEXICO":
                 hay_error_lexico = True
 
-    texto_resultado_sintactico.config(state="normal")
-    texto_resultado_sintactico.delete("1.0", tk.END)
+    texto_resultado.config(state="normal")
+    texto_resultado.delete("1.0", tk.END)
 
-    if modo_var.get() == "Sintáctico":
+    modo = modo_var.get()
+
+    if modo == "Léxico":
+        escribir(
+            "Modo Léxico: solo se muestra la tabla de tokens. "
+            "Cambia a 'Sintáctico' o 'Semántico' en el desplegable para ver más análisis."
+        )
+
+    else:
+        # Sintáctico y Semántico necesitan que no haya errores léxicos
         if hay_error_lexico:
-            texto_resultado_sintactico.insert(
-                tk.END,
-                "No se puede analizar la sintaxis: hay errores léxicos en el archivo. Corrígelos primero.\n"
+            escribir(
+                f"No se puede hacer el análisis {modo.lower()}: "
+                "hay errores léxicos en el archivo. Corrígelos primero.\n"
             )
         else:
             tokens = tokens_desde_salida(resultado.stdout)
+
+            # ---------- 2) SINTÁCTICO ----------
             aceptado, log, error = analizar_sintaxis(tokens)
 
-            texto_resultado_sintactico.insert(tk.END, "--- Derivación paso a paso ---\n")
-            for paso in log:
-                texto_resultado_sintactico.insert(tk.END, paso + "\n")
-            texto_resultado_sintactico.insert(tk.END, "\n--- Resultado ---\n")
+            if modo == "Sintáctico":
+                escribir("--- Derivación paso a paso ---\n")
+                for paso in log:
+                    escribir(paso + "\n")
+                escribir("\n--- Resultado ---\n")
+                if aceptado:
+                    escribir("Cadena ACEPTADA (sintaxis correcta)\n")
+                else:
+                    escribir(f"ERROR DE SINTAXIS: {error}\n")
 
-            if aceptado:
-                texto_resultado_sintactico.insert(tk.END, "Cadena ACEPTADA (sintaxis correcta)\n")
+            # ---------- 3) SEMÁNTICO ----------
             else:
-                texto_resultado_sintactico.insert(tk.END, f"ERROR DE SINTAXIS: {error}\n")
-    else:
-        texto_resultado_sintactico.insert(
-            tk.END,
-            "Modo Léxico: solo se muestra la tabla de tokens. Cambia a 'Sintáctico' en el desplegable para ver la derivación."
-        )
+                if not aceptado:
+                    escribir("No se puede hacer el análisis semántico: hay un error de sintaxis.\n")
+                    escribir(f"ERROR DE SINTAXIS: {error}\n")
+                else:
+                    ok, log_sem, errores, historial = analizar_semantica(tokens)
 
-    texto_resultado_sintactico.config(state="disabled")
+                    escribir("--- Tabla de símbolos ---\n")
+                    if historial:
+                        escribir(f"{'Nombre':<15}{'Tipo':<12}{'Ámbito'}\n")
+                        for nombre, tipo, nivel in historial:
+                            etiqueta = "global" if nivel == 0 else f"bloque {nivel}"
+                            escribir(f"{nombre:<15}{tipo:<12}{etiqueta}\n")
+                    else:
+                        escribir("(vacía)\n")
+
+                    escribir("\n--- Comprobaciones realizadas ---\n")
+                    for paso in log_sem:
+                        escribir(paso + "\n")
+
+                    escribir("\n--- Resultado ---\n")
+                    if ok:
+                        escribir("ANÁLISIS SEMÁNTICO CORRECTO\n")
+                    else:
+                        escribir(f"Se encontraron {len(errores)} error(es) semántico(s):\n")
+                        for e in errores:
+                            escribir(f"  • {e}\n")
+
+    texto_resultado.config(state="disabled")
+
 
 tk.Button(acciones_frame, text="Analizar", command=analizar, bg="#00b894", fg="white").pack(side="left", padx=5)
 
@@ -196,10 +345,11 @@ tabla_tokens.column("tipo", width=200)
 tabla_tokens.column("valor", width=400)
 tabla_tokens.pack(fill="both", expand=True)
 
-tk.Label(panel_derecho, text="Resultado del análisis sintáctico:").pack(anchor="w", pady=(10, 0))
+etiqueta_resultado = tk.Label(panel_derecho, text="Resultado del análisis léxico:")
+etiqueta_resultado.pack(anchor="w", pady=(10, 0))
 
-texto_resultado_sintactico = tk.Text(panel_derecho, height=10, state="disabled")
-texto_resultado_sintactico.pack(fill="both", expand=True)
+texto_resultado = tk.Text(panel_derecho, height=10, state="disabled")
+texto_resultado.pack(fill="both", expand=True)
 
 cargar_lista()
 
