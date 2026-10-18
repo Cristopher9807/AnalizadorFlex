@@ -1,11 +1,15 @@
 entero x = 5;
 decimal y = 2.5;
-texto nombre = "Criss";
+texto nombre = "15";
+
 decimal z = x + y;
 si (z > 3) {
     entero w = x * 2;
     x = w;
 }
+
+
+
 
 
 

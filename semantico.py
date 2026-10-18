@@ -38,7 +38,7 @@ class TablaSimbolos:
 def compatible(destino, origen):
     """¿Se puede guardar un valor de tipo 'origen' en una variable 'destino'?"""
     if origen == "error" or destino == "error":
-        return True              # ya se reportó un error antes: no duplicar
+        return True             
     if destino == origen:
         return True
     return destino == "decimal" and origen == "entero"

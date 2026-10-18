@@ -1,0 +1,3 @@
+entero a = 10;
+entero b = a + c;
+texto t = 5;

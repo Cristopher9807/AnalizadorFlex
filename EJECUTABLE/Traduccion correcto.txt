@@ -1,0 +1,18 @@
+// Programa de prueba para el traductor
+entero i = 1;
+entero suma = 0;
+mientras (i <= 10) {
+    suma = suma + i;
+    i = i + 1;
+}
+decimal promedio = suma / 4;
+texto saludo = "hola" + " mundo";
+si (suma > 50 Y promedio >= 13.0) {
+    entero descuento = 5;
+    suma = suma - descuento;
+} sino {
+    suma = 0;
+}
+retorno suma;
+
+

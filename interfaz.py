@@ -8,6 +8,7 @@ import unicodedata
 
 from parser import tokens_desde_salida, analizar_sintaxis
 from semantico import analizar_semantica
+from traductor import traducir, DESTINOS, EXTENSIONES, ErrorTraduccion
 
 if getattr(sys, "frozen", False):
     # Corriendo como .exe: los .txt están junto al .exe (carpeta EJECUTABLE)
@@ -22,7 +23,7 @@ else:
     EJECUTABLE = os.path.join(CARPETA_PROYECTO, "analizador.exe")
 
 PREFIJO_SEMANTICO = "Semantico"
-TITULO_BASE = "Analizador Léxico / Sintáctico / Semántico"
+TITULO_BASE = "Analizador Léxico / Sintáctico / Semántico / Traductor"
 
 ventana = tk.Tk()
 ventana.title(TITULO_BASE)
@@ -32,6 +33,9 @@ archivo_actual = {"nombre": None}
 
 # Archivos abiertos manualmente: se muestran siempre en la lista, sin importar el filtro del modo
 archivos_extra = set()
+
+# Última traducción generada (para el botón "Guardar traducción")
+ultima_traduccion = {"codigo": None, "destino": None}
 
 # ---------------- Panel izquierdo: lista de archivos ----------------
 panel_izquierdo = tk.Frame(ventana)
@@ -51,7 +55,7 @@ def es_archivo_semantico(nombre):
 
 
 def cargar_lista():
-    """Modo Semántico: archivos 'Semantico ...'. Otros modos: el resto.
+    """Modo Semántico: archivos 'Semantico ...'. Otros modos (incluido Traductor): el resto.
     Los archivos abiertos con 'Abrir...' se muestran siempre."""
     lista_archivos.delete(0, tk.END)
     modo_semantico = modo_var.get() == "Semántico"
@@ -205,11 +209,42 @@ modo_var = tk.StringVar(value="Léxico")
 combo_modo = ttk.Combobox(
     modo_frame,
     textvariable=modo_var,
-    values=["Léxico", "Sintáctico", "Semántico"],
+    values=["Léxico", "Sintáctico", "Semántico", "Traductor"],
     state="readonly",
     width=15
 )
 combo_modo.pack(side="left", padx=5)
+
+# --- Selector de lenguaje destino (solo visible en modo Traductor) ---
+destino_frame = tk.Frame(modo_frame)
+tk.Label(destino_frame, text="Traducir a:").pack(side="left")
+
+destino_var = tk.StringVar(value=DESTINOS[0])
+combo_destino = ttk.Combobox(
+    destino_frame,
+    textvariable=destino_var,
+    values=DESTINOS,
+    state="readonly",
+    width=26
+)
+combo_destino.pack(side="left", padx=5)
+
+
+def titulo_resultado():
+    modo = modo_var.get()
+    if modo == "Traductor":
+        return "Resultado de la traducción:"
+    return f"Resultado del análisis {modo.lower()}:"
+
+
+def actualizar_controles_traductor():
+    """Muestra u oculta el selector de destino y el botón de guardar traducción."""
+    if modo_var.get() == "Traductor":
+        destino_frame.pack(side="left", padx=(15, 0))
+        boton_guardar_traduccion.pack(side="left", padx=5)
+    else:
+        destino_frame.pack_forget()
+        boton_guardar_traduccion.pack_forget()
 
 
 def al_cambiar_modo(event=None):
@@ -218,10 +253,18 @@ def al_cambiar_modo(event=None):
         guardar_archivo(mostrar_aviso=False)
         archivos_extra.add(archivo_actual["nombre"])
     cargar_lista()
-    etiqueta_resultado.config(text=f"Resultado del análisis {modo_var.get().lower()}:")
+    etiqueta_resultado.config(text=titulo_resultado())
+    actualizar_controles_traductor()
+
+
+def al_cambiar_destino(event=None):
+    # Si ya hay un archivo abierto, se vuelve a traducir con el nuevo destino
+    if modo_var.get() == "Traductor" and archivo_actual["nombre"]:
+        analizar()
 
 
 combo_modo.bind("<<ComboboxSelected>>", al_cambiar_modo)
+combo_destino.bind("<<ComboboxSelected>>", al_cambiar_destino)
 
 tk.Label(panel_derecho, text="Contenido del archivo:").pack(anchor="w")
 
@@ -238,6 +281,31 @@ def escribir(texto):
     texto_resultado.insert(tk.END, texto)
 
 
+def guardar_traduccion():
+    """Guarda el último código traducido con la extensión del lenguaje destino."""
+    if not ultima_traduccion["codigo"]:
+        messagebox.showwarning(
+            "Atención",
+            "Todavía no hay una traducción. Pulsa 'Analizar' en modo Traductor primero."
+        )
+        return
+    destino = ultima_traduccion["destino"]
+    extension = EXTENSIONES[destino]
+    base = os.path.splitext(archivo_actual["nombre"] or "traduccion")[0]
+    ruta = filedialog.asksaveasfilename(
+        title=f"Guardar traducción a {destino}",
+        initialdir=CARPETA,
+        initialfile=base + extension,
+        defaultextension=extension,
+        filetypes=[(f"Archivos {extension}", f"*{extension}"), ("Todos los archivos", "*.*")]
+    )
+    if not ruta:
+        return
+    with open(ruta, "w", encoding="utf-8") as f:
+        f.write(ultima_traduccion["codigo"])
+    messagebox.showinfo("Guardado", f"Traducción guardada en:\n{ruta}")
+
+
 def analizar():
     if not archivo_actual["nombre"]:
         messagebox.showwarning("Atención", "Guarda o abre un archivo primero.")
@@ -248,6 +316,10 @@ def analizar():
     if not os.path.exists(EJECUTABLE):
         messagebox.showerror("Error", "No se encontró analizador.exe en esta carpeta.")
         return
+
+    # Cada análisis empieza sin traducción previa
+    ultima_traduccion["codigo"] = None
+    ultima_traduccion["destino"] = None
 
     # ---------- 1) LÉXICO (siempre se ejecuta) ----------
     resultado = subprocess.run(
@@ -276,8 +348,33 @@ def analizar():
     if modo == "Léxico":
         escribir(
             "Modo Léxico: solo se muestra la tabla de tokens. "
-            "Cambia a 'Sintáctico' o 'Semántico' en el desplegable para ver más análisis."
+            "Cambia a 'Sintáctico', 'Semántico' o 'Traductor' en el desplegable para ver más análisis."
         )
+
+    elif modo == "Traductor":
+        # ---------- 4) TRADUCTOR ----------
+        destino = destino_var.get()
+        if hay_error_lexico:
+            escribir(
+                "No se puede traducir: hay errores léxicos en el archivo. "
+                "Corrígelos primero.\n"
+            )
+        else:
+            try:
+                codigo, arbol = traducir(resultado.stdout, destino)
+            except ErrorTraduccion as e:
+                escribir("--- Resultado ---\n")
+                escribir(f"ERROR DE TRADUCCIÓN: {e}\n")
+            else:
+                ultima_traduccion["codigo"] = codigo
+                ultima_traduccion["destino"] = destino
+                escribir("--- Árbol sintáctico (AST) ---\n")
+                escribir(arbol.rstrip("\n") + "\n")
+                escribir(f"\n--- Código traducido a {destino} ---\n")
+                escribir(codigo)
+                escribir("\n--- Resultado ---\n")
+                escribir(f"TRADUCCIÓN CORRECTA a {destino}. "
+                         "Usa 'Guardar traducción' para guardar el código.\n")
 
     else:
         # Sintáctico y Semántico necesitan que no haya errores léxicos
@@ -335,6 +432,12 @@ def analizar():
 
 
 tk.Button(acciones_frame, text="Analizar", command=analizar, bg="#00b894", fg="white").pack(side="left", padx=5)
+
+# Botón de guardar traducción: se muestra solo en modo Traductor (ver actualizar_controles_traductor)
+boton_guardar_traduccion = tk.Button(
+    acciones_frame, text="Guardar traducción", command=guardar_traduccion,
+    bg="#0984e3", fg="white"
+)
 
 tk.Label(panel_derecho, text="Tokens generados:").pack(anchor="w", pady=(10, 0))
 

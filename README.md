@@ -1,320 +1,372 @@
-# Analizador Léxico, Sintáctico y Semántico - Flex + Python (GUI)
+# Documentación del lenguaje y del traductor de código
 
-Proyecto de la materia de Compiladores. Implementa un analizador
-léxico usando **Flex**, un analizador sintáctico (descenso recursivo) y un
-analizador semántico (tabla de símbolos y verificación de tipos) en
-**Python**, con una interfaz gráfica en **Python/Tkinter** que permite
-crear, abrir, editar, eliminar y analizar archivos de texto, sin usar la consola.
+**Autor:** Cristopher Grullón Pérez (1-17-0292)
+**Materia:** Compiladores, UTESA
+**Capítulo:** 6 – Generación de código intermedio
 
-## Requisitos
+---
 
-- Para usar el ejecutable final (`EJECUTABLE/AnalizadorCompiladores.exe`):
-  ninguno, no requiere tener Python instalado.
-- Para correr o modificar el código fuente: Python 3.x instalado (incluye
-  Tkinter por defecto en Windows).
-- (Opcional, solo si se desea recompilar el analizador léxico) Flex y GCC —
-  por ejemplo mediante MSYS2/MinGW (`win_flex`, `gcc`).
-- (Opcional, solo si se desea regenerar el ejecutable) PyInstaller
-  (`pip install pyinstaller`).
+## 1. Descripción general
 
-## Cómo ejecutar
+El proyecto es un compilador pequeño, construido por etapas (una por capítulo), con una interfaz gráfica en Tkinter. La última etapa es un **traductor de código**: toma un programa escrito en nuestro lenguaje (palabras clave en español) y lo traduce a otro lenguaje.
 
-**Opción recomendada (no requiere tener Python instalado):**
-
-1. Entra a la carpeta `EJECUTABLE/`.
-2. Haz doble clic en `AnalizadorCompiladores.exe`.
-
-**Para correr o modificar el código fuente directamente:**
-
-1. Asegúrate de tener Python 3.x instalado.
-2. Abre una terminal en la carpeta del proyecto y corre:
-
-```
-python interfaz.py
-```
-
-Al correr desde el código fuente, la interfaz lee y guarda los archivos
-`.txt` en la carpeta `EJECUTABLE/`, igual que lo hace el ejecutable, de modo
-que se ven los mismos archivos en ambos casos.
-
-En cualquiera de los dos casos, la interfaz permite:
-- Ver la lista de archivos `.txt` de la carpeta.
-- Crear un archivo nuevo (**Nuevo**).
-- Abrir un archivo `.txt` de cualquier ubicación (**Abrir...**): se copia a
-  la carpeta de trabajo y queda en la lista.
-- Editar el contenido de un archivo seleccionado.
-- Guardar los cambios (**Guardar**).
-- Eliminar un archivo (**Eliminar**).
-- Elegir, en el desplegable **Analizador**, entre **Léxico**, **Sintáctico**
-  o **Semántico**. Al cambiar de analizador, el archivo abierto se guarda y
-  se mantiene en el editor.
-- Analizar el archivo abierto (**Analizar**), mostrando los tokens
-  generados y, según el modo: la derivación paso a paso y el veredicto
-  (Sintáctico), o la tabla de símbolos, las comprobaciones y los errores
-  semánticos (Semántico).
-
-**Filtrado de archivos por analizador:** en modo **Semántico** la lista
-muestra los archivos cuyo nombre empieza por `Semantico`; en modo Léxico y
-Sintáctico muestra el resto. Los archivos abiertos con **Abrir...** o creados
-en la sesión se muestran siempre. Si se crea un archivo nuevo en modo
-Semántico, el programa le agrega el prefijo `Semantico` automáticamente.
-
-## Lenguaje reconocido por el analizador
-
-El analizador léxico reconoce los siguientes elementos:
-
-| Categoría | Expresión regular / regla | Ejemplos | Token generado |
-| --- | --- | --- | --- |
-| Palabras clave | literales: `si`, `sino`, `mientras`, `entero`, `decimal`, `texto`, `retorno` | `si`, `entero` | `PALABRA_CLAVE` |
-| Identificadores | `{LETRA}({LETRA}\|{DIGITO})*` | `x`, `contador`, `nombre_1` | `ID` |
-| Números enteros | `{DIGITO}+` | `5`, `100` | `NUMERO_ENTERO` |
-| Números decimales | `{DIGITO}+\.{DIGITO}+` | `3.14`, `0.5` | `NUMERO_DECIMAL` |
-| Cadenas de texto | `\"[^\"]*\"` | `"hola mundo"` | `CADENA` |
-| Comentarios | `\/\/[^\n]*` | `// esto es un comentario` | `COMENTARIO` |
-| Operadores lógicos | literales: `Y`, `O` | `Y`, `O` | `OP_LOGICO` |
-| Operadores relacionales | literales: `<=`, `<`, `>=`, `>`, `==`, `!=` | `<=`, `==` | `OPREL` |
-| Operadores aritméticos | literales: `+ - * / %` | `+`, `%` | `OP_ARITMETICO` |
-| Signos de puntuación | literales: `( ) { } ; =` | `(`, `;` | `PUNTUACION` |
-| Espacios/tabs/saltos de línea | `[ \t\n]+` | — | (se ignoran, no generan token) |
-| Símbolo no reconocido | `.` (cualquier otro carácter) | `@`, `#`, `&` | `ERROR_LEXICO` |
-
-**Notas sobre precedencia de reglas** (importante para las pruebas):
-- Las palabras clave se declaran **antes** que `{ID}` en el `.l`, porque
-  Flex resuelve empates de longitud a favor de la regla que aparece primero.
-  Sin ese orden, `entero` se reconocería como `ID` en lugar de `PALABRA_CLAVE`.
-- Los operadores de dos caracteres (`<=`, `>=`, `==`, `!=`) se declaran
-  **antes** que sus versiones de un solo carácter (`<`, `>`), porque Flex
-  siempre prefiere la coincidencia más larga posible ("maximal munch").
-
-### Ejemplo de código de prueba
-
-```
-entero x = 5;
-decimal y = 3.14;
-si (x <= 10 Y y > 1) {
-retorno x + y;
-} sino {
-retorno 0;
-}
-// esto es un comentario
-texto mensaje = "hola mundo";
-```
-
-## Cómo recompilar el analizador léxico (opcional)
-
-Si se modifica `analizador.l`, hay que regenerar el ejecutable:
-
-```
-win_flex analizador.l
-gcc lex.yy.c -o analizador.exe
-```
-
-## Análisis sintáctico
-
-Además del análisis léxico, el proyecto incluye un **analizador sintáctico**
-implementado en Python (`parser.py`), integrado en la misma interfaz
-gráfica. En la interfaz hay un desplegable **"Analizador"** con tres opciones:
-
-- **Léxico**: comportamiento original, solo muestra la tabla de tokens.
-- **Sintáctico**: además de los tokens, ejecuta el analizador sintáctico
-  sobre esos mismos tokens y muestra, en un panel nuevo, la derivación
-  paso a paso y el veredicto final (cadena aceptada o el error de sintaxis
-  encontrado, indicando qué se esperaba y qué se encontró).
-- **Semántico**: ver la sección "Análisis semántico".
-
-Si el archivo analizado tiene algún `ERROR_LEXICO`, el análisis sintáctico
-no se ejecuta — primero hay que corregir el error léxico.
-
-### Gramática reconocida
-
-El analizador sintáctico se implementó como un **analizador descendente
-predictivo (descenso recursivo)**: una función por cada no terminal, que
-decide qué producción aplicar mirando el token actual. La gramática es la
-siguiente:
-
-```
-programa → listaInstr
-listaInstr → instr listaInstr | ε
-instr → declaracion | asignacion | si | mientras | retorno
-tipo → entero | decimal | texto
-declaracion → tipo id = expr ;
-asignacion → id = expr ;
-si → si ( expr ) bloque sinoOpt
-sinoOpt → sino bloque | ε
-mientras → mientras ( expr ) bloque
-retorno → retorno expr ;
-bloque → { listaInstr }
-
-expr → exprOr
-exprOr → exprAnd { O exprAnd }
-exprAnd → exprRel { Y exprRel }
-exprRel → exprAr [ OPREL exprAr ]
-exprAr → term { (+|-) term }
-term → factor { (*|/|%) factor }
-factor → ( expr ) | id | numero_entero | numero_decimal | cadena
-```
-
-Esta gramática no tiene recursividad por la izquierda y cada alternativa se
-puede elegir viendo un solo token de anticipación, por lo que es apta para
-análisis descendente predictivo sin necesidad de retroceso (*backtracking*).
-
-**Nota sobre el "else colgante":** el cuerpo de `si`/`sino` siempre exige un
-`bloque` con llaves (`{ listaInstr }`), nunca una instrucción suelta. Esto
-elimina por diseño la ambigüedad clásica del "dangling else" (a qué `si` se
-asocia un `sino` cuando hay varios `si` anidados sin llaves): en este
-lenguaje no existe forma de escribir esa construcción ambigua.
-
-### Casos de prueba (sintáctico)
-
-| Entrada | Resultado esperado | Resultado obtenido |
+| Destino | Extensión | Qué es |
 | --- | --- | --- |
-| Programa completo con declaraciones, `si/sino`, `retorno`, comentario y cadena | Aceptada | ✔️ Aceptada |
-| `entero x = 52` (sin `;`) | Error de sintaxis, falta `;` | ✔️ `Se esperaba ';' pero se encontró '$'` |
-| `si x <= 10 { retorno x; }` (sin `(` después de `si`) | Error de sintaxis, falta `(` | ✔️ `Se esperaba '(' pero se encontró 'x'` |
+| Python | `.py` | Lenguaje interpretado de alto nivel |
+| JavaScript | `.js` | Lenguaje de la web (se ejecuta con Node.js) |
+| C++ | `.cpp` | Lenguaje compilado, con tipos estáticos |
+| Código de tres direcciones | `.tac` | Representación intermedia del capítulo 6 |
 
-## Análisis semántico
+### 1.1 Flujo completo
 
-El **analizador semántico** está implementado en Python (`semantico.py`) e
-integrado en la misma interfaz (modo **Semántico**). Revisa que un programa
-que ya es sintácticamente correcto además tenga sentido: que las variables
-existan, que los tipos sean compatibles y que las condiciones sean válidas.
+```
+ programa fuente (.txt)
+        |
+        v
+ [ analizador.exe (Flex) ]      Etapa léxica      -> tokens "TIPO<TAB>valor"
+        |
+        v
+ [ parser.py ]                  Etapa sintáctica  -> acepta o rechaza (derivación)
+        |
+        v
+ [ semantico.py ]               Etapa semántica   -> tabla de símbolos y tipos
+        |
+        v
+ [ traductor.py ]               Traductor         -> AST + comprobación de tipos
+        |                                            + generador de código
+        v
+ Python / JavaScript / C++ / código de tres direcciones
+```
 
-Para que se ejecute, el archivo no debe tener errores léxicos ni de sintaxis;
-si los tiene, la interfaz los informa y no hace el análisis semántico.
+El traductor sigue la estructura clásica de un compilador:
 
-### Cómo funciona
+- **Front-end** (analiza el programa): `leer_tokens` y `construir_ast`. Produce un **árbol sintáctico abstracto (AST)** con el tipo de cada expresión.
+- **Back-end** (genera código): una función por lenguaje destino (`_generar_python`, `_generar_js`, `_generar_cpp`, `_generar_tac`).
 
-- **Tabla de símbolos:** una pila de ámbitos. Cada `{ }` abre un ámbito nuevo
-  y al cerrarlo se descartan las variables declaradas dentro. Cada declaración
-  se guarda con su nombre, tipo y nivel de ámbito.
-- **Atributos:** el tipo de cada expresión se calcula de abajo hacia arriba
-  (atributo sintetizado, devuelto por cada función de expresión) y el ámbito
-  se pasa de arriba hacia abajo (atributo heredado, la pila de ámbitos).
-- **Errores:** se acumulan todos, sin detenerse en el primero. Cuando una
-  expresión tiene error, su tipo pasa a `error` para no provocar errores en
-  cascada.
+Gracias a esta separación, agregar un lenguaje nuevo solo requiere escribir un generador nuevo; el front-end no cambia (idea de la sección 6.1 del libro: *m* lenguajes y *n* máquinas necesitan *m + n* piezas, no *m × n* compiladores).
 
-### Reglas verificadas
+---
 
-| Regla | Ejemplo con error |
+## 2. El lenguaje fuente
+
+### 2.1 Elementos léxicos (tokens)
+
+| Token | Descripción | Ejemplos |
+| --- | --- | --- |
+| `PALABRA_CLAVE` | Palabras reservadas | `si`, `sino`, `mientras`, `entero`, `decimal`, `texto`, `retorno` |
+| `ID` | Identificador: letra o `_`, seguido de letras, dígitos o `_` | `suma`, `_x`, `total2` |
+| `NUMERO_ENTERO` | Uno o más dígitos | `0`, `42` |
+| `NUMERO_DECIMAL` | Dígitos, punto y dígitos | `3.14`, `13.0` |
+| `CADENA` | Texto entre comillas dobles (sin comillas dentro) | `"hola"` |
+| `COMENTARIO` | Desde `//` hasta el fin de la línea | `// esto es un comentario` |
+| `OP_LOGICO` | Operadores lógicos `Y` (y) y `O` (o) | `Y`, `O` |
+| `OPREL` | Operadores relacionales | `<`, `<=`, `>`, `>=`, `==`, `!=` |
+| `OP_ARITMETICO` | Operadores aritméticos | `+`, `-`, `*`, `/`, `%` |
+| `PUNTUACION` | Símbolos de puntuación | `(` `)` `{` `}` `;` `=` |
+| `ERROR_LEXICO` | Cualquier símbolo no reconocido | `@` |
+
+Los espacios, tabuladores y saltos de línea se ignoran.
+
+### 2.2 Gramática
+
+```
+programa      -> listaInstr
+listaInstr    -> instr listaInstr | ε
+instr         -> declaracion | asignacion | si | mientras | retorno | COMENTARIO
+
+declaracion   -> tipo ID '=' expr ';'
+tipo          -> 'entero' | 'decimal' | 'texto'
+asignacion    -> ID '=' expr ';'
+si            -> 'si' '(' expr ')' bloque [ 'sino' bloque ]
+mientras      -> 'mientras' '(' expr ')' bloque
+retorno       -> 'retorno' expr ';'
+bloque        -> '{' listaInstr '}'
+
+expr          -> exprY { 'O' exprY }
+exprY         -> exprRel { 'Y' exprRel }
+exprRel       -> exprAr [ OPREL exprAr ]
+exprAr        -> termino { ('+' | '-') termino }
+termino       -> factor { ('*' | '/' | '%') factor }
+factor        -> '(' expr ')' | ID | NUMERO_ENTERO | NUMERO_DECIMAL | CADENA
+```
+
+La gramática no tiene recursividad por la izquierda (las repeticiones se escriben con `{ ... }`), por eso se puede analizar con **descenso recursivo**.
+
+**Nota sobre el `else` colgante:** `si` y `sino` siempre llevan bloque con llaves `{ }`. No existe la forma `si (x) instruccion;`, así que la ambigüedad del *dangling else* (capítulo 4) no puede aparecer en este lenguaje.
+
+### 2.3 Precedencia y asociatividad
+
+De menor a mayor precedencia (todos asocian por la izquierda):
+
+| Nivel | Operadores |
 | --- | --- |
-| No se puede declarar dos veces una variable en el mismo ámbito | `entero x = 5; entero x = 6;` |
-| Toda variable debe estar declarada antes de usarse | `entero r = y + 1;` |
-| El valor asignado debe ser compatible con el tipo de la variable | `texto t = 10;` |
-| `entero` cabe en `decimal`, pero no al revés | `entero x = 1.5;` |
-| `entero` operado con `decimal` da `decimal` | `x + y` con `y` decimal |
-| `texto + texto` es concatenación | `"a" + "b"` |
-| Las comparaciones dan `booleano` y comparan número con número o texto con texto | `1 < "a"` |
-| `Y` y `O` solo aceptan `booleano` | `x Y 1` |
-| La condición de `si` y `mientras` debe ser `booleano` | `mientras (x)` |
-| Una variable no existe fuera del bloque donde se declaró | usar `a` fuera de su `{ }` |
+| 1 (menor) | `O` |
+| 2 | `Y` |
+| 3 | `<` `<=` `>` `>=` `==` `!=` (no se encadenan: `a < b < c` no es válido) |
+| 4 | `+` `-` |
+| 5 (mayor) | `*` `/` `%` |
 
-### Salida en la interfaz
+### 2.4 Tipos y reglas de tipos
 
-En modo **Semántico** el panel de resultados muestra:
+El lenguaje tiene tres tipos: `entero`, `decimal` y `texto`. Las comparaciones y los operadores `Y`/`O` producen un valor lógico que solo se usa como condición.
 
-1. La **tabla de símbolos** (nombre, tipo y ámbito de cada variable).
-2. Las **comprobaciones realizadas**.
-3. El **resultado**: `ANÁLISIS SEMÁNTICO CORRECTO` o la lista de errores
-   semánticos encontrados.
-
-### Casos de prueba (semántico)
-
-Archivos incluidos en `EJECUTABLE/`:
-
-| Archivo | Resultado esperado |
+| Regla | Detalle |
 | --- | --- |
-| `Semantico correcto.txt` | ✔️ Análisis semántico correcto |
-| `Semantico errores.txt` | ✔️ 6 errores semánticos |
+| Declaración | Toda variable se declara con tipo e inicialización: `entero x = 5;` |
+| Uso | Una variable debe declararse antes de usarse |
+| Ámbitos | Cada bloque `{ }` abre un ámbito nuevo. No se puede declarar el mismo nombre dos veces en el mismo ámbito; un bloque interno puede ocultar un nombre externo |
+| Asignación | `entero ← entero`, `decimal ← decimal`, `decimal ← entero` (ampliación automática), `texto ← texto`. Cualquier otra combinación es un error |
+| Aritmética | `+ - * /` solo con `entero` y `decimal`. Si algún operando es `decimal`, el resultado es `decimal`; si ambos son `entero`, el resultado es `entero` |
+| Módulo `%` | Solo con operandos `entero` |
+| Concatenación | `texto + texto` produce `texto` |
+| Comparación | Se comparan dos números entre sí o dos textos entre sí |
+| Lógicos | `Y` y `O` no aceptan `texto` |
+| Condición | La condición de `si` y `mientras` no puede ser `texto` |
+| División | `entero / entero` es **división entera** (como en C) |
+| `retorno` | Devuelve un valor al terminar el programa |
 
-Contenido de `Semantico correcto.txt`:
+### 2.5 Ejemplo de programa
 
 ```
-entero x = 5;
-decimal y = 2.5;
-texto nombre = "Criss";
-decimal z = x + y;
-si (z > 3) {
-    entero w = x * 2;
-    x = w;
+// Programa de prueba para el traductor
+entero i = 1;
+entero suma = 0;
+mientras (i <= 10) {
+    suma = suma + i;
+    i = i + 1;
+}
+decimal promedio = suma / 4;
+texto saludo = "hola" + " mundo";
+si (suma > 50 Y promedio >= 13.0) {
+    entero descuento = 5;
+    suma = suma - descuento;
+} sino {
+    suma = 0;
+}
+retorno suma;
+```
+
+---
+
+## 3. El traductor
+
+### 3.1 Etapas
+
+1. **Lectura de tokens** (`leer_tokens`): convierte la salida de `analizador.exe` (líneas `TIPO<TAB>valor`) en una lista de pares.
+2. **Análisis sintáctico y de tipos** (`construir_ast`): parser de descenso recursivo que construye el AST. Mantiene una pila de tablas de símbolos (una por bloque) y calcula el tipo de cada expresión **mientras analiza** (atributos sintetizados, capítulo 5).
+3. **Generación de código** (`generar`): recorre el AST y escribe el programa en el lenguaje destino.
+
+### 3.2 Nodos del AST
+
+| Nodo | Representa |
+| --- | --- |
+| `Programa` | Lista de instrucciones |
+| `Declaracion`, `Asignacion` | `tipo id = expr;` y `id = expr;` |
+| `Si`, `Mientras` | Condición + bloque (y bloque `sino` opcional) |
+| `Retorno` | `retorno expr;` |
+| `Comentario` | Los comentarios se conservan y se traducen |
+| `Binaria` | Operación con operador, dos hijos y tipo |
+| `Numero`, `Cadena`, `Variable` | Hojas del árbol |
+
+### 3.3 Tabla de equivalencias
+
+| Construcción fuente | Python | JavaScript | C++ |
+| --- | --- | --- | --- |
+| Programa | `def main():` + llamada | `function main()` + llamada | `int main()` |
+| `entero x = 5;` | `x = 5` | `let x = 5;` | `int x = 5;` |
+| `decimal y = 2.5;` | `y = 2.5` | `let y = 2.5;` | `double y = 2.5;` |
+| `texto t = "a";` | `t = "a"` | `let t = "a";` | `std::string t = "a";` |
+| `si (c) { } sino { }` | `if c:` / `else:` | `if (c) { } else { }` | `if (c) { } else { }` |
+| `mientras (c) { }` | `while c:` | `while (c) { }` | `while (c) { }` |
+| `retorno e;` | `return e` | `return e;` | `return e;` |
+| `Y` / `O` | `and` / `or` | `&&` / `\|\|` | `&&` / `\|\|` |
+| `==` / `!=` | `==` / `!=` | `===` / `!==` | `==` / `!=` |
+| `entero / entero` | `int(a / b)` | `Math.trunc(a / b)` | `a / b` |
+| Concatenar textos | `a + b` | `a + b` | `std::string(a) + std::string(b)` |
+| Comentario `// x` | `# x` | `// x` | `// x` |
+
+### 3.4 Decisiones de diseño
+
+- **Paréntesis mínimos.** El AST no guarda los paréntesis del original. Al generar, se vuelven a poner solo donde la precedencia lo exige (por ejemplo `10 - (3 - 2)`, pero `10 - 3 - 2`).
+- **Nombres reservados.** Si un identificador coincide con una palabra reservada del destino (`class`, `int`, `main`, ...), se le agrega un guion bajo (`class_`).
+- **Bloques vacíos en Python.** Python no admite bloques sin instrucciones, así que se agrega `pass`.
+- **Ampliación de tipos.** En Python, un entero asignado a un `decimal` se convierte con `float(...)`.
+- **`retorno` en C++.** `main` devuelve `int`: un `retorno` decimal se convierte con `(int)` y un `retorno` de texto se rechaza con un mensaje claro. Si el programa no termina en `retorno`, se agrega `return 0;`.
+
+### 3.5 Código de tres direcciones (representación intermedia)
+
+El cuarto destino no es un lenguaje de programación, sino el **código intermedio** del capítulo 6. Cada instrucción tiene como máximo un operador:
+
+| Forma | Ejemplo |
+| --- | --- |
+| Operación binaria | `t1 = suma / 4` |
+| Copia | `x = t1` |
+| Salto incondicional | `goto L1` |
+| Salto si es falso | `ifFalse i <= 10 goto L2` |
+| Etiqueta | `L1:` |
+| Retorno | `return suma` |
+| Conversión de tipo | `promedio = (float) t1` |
+
+- Los temporales son `t1, t2, ...` y las etiquetas `L1, L2, ...`.
+- `si` genera un `ifFalse` que salta al final (o al `sino`).
+- `mientras` genera una etiqueta de inicio, un `ifFalse` de salida y un `goto` de regreso (esquema de la figura 6.35).
+- Las conversiones `entero → decimal` se hacen explícitas con `(float)` (sección 6.5.2).
+- `x = a op b` se genera directamente, sin temporal ni copia intermedia.
+- Los operadores `Y` / `O` se calculan como valores (`t = a && b`), sin evaluación por cortocircuito.
+
+### 3.6 Ejemplo completo
+
+Programa fuente: el de la sección 2.5.
+
+**Python**
+
+```python
+# Código generado por el traductor (destino: Python)
+
+def main():
+    # Programa de prueba para el traductor
+    i = 1
+    suma = 0
+    while i <= 10:
+        suma = suma + i
+        i = i + 1
+    promedio = float(int(suma / 4))
+    saludo = "hola" + " mundo"
+    if suma > 50 and promedio >= 13.0:
+        descuento = 5
+        suma = suma - descuento
+    else:
+        suma = 0
+    return suma
+
+if __name__ == "__main__":
+    main()
+```
+
+**JavaScript**
+
+```javascript
+// Código generado por el traductor (destino: JavaScript)
+
+function main() {
+    // Programa de prueba para el traductor
+    let i = 1;
+    let suma = 0;
+    while (i <= 10) {
+        suma = suma + i;
+        i = i + 1;
+    }
+    let promedio = Math.trunc(suma / 4);
+    let saludo = "hola" + " mundo";
+    if (suma > 50 && promedio >= 13.0) {
+        let descuento = 5;
+        suma = suma - descuento;
+    } else {
+        suma = 0;
+    }
+    return suma;
+}
+
+main();
+```
+
+**C++**
+
+```cpp
+// Código generado por el traductor (destino: C++)
+#include <iostream>
+#include <string>
+
+int main() {
+    // Programa de prueba para el traductor
+    int i = 1;
+    int suma = 0;
+    while (i <= 10) {
+        suma = suma + i;
+        i = i + 1;
+    }
+    double promedio = suma / 4;
+    std::string saludo = std::string("hola") + std::string(" mundo");
+    if (suma > 50 && promedio >= 13.0) {
+        int descuento = 5;
+        suma = suma - descuento;
+    } else {
+        suma = 0;
+    }
+    return suma;
 }
 ```
 
-Contenido de `Semantico errores.txt` (variable repetida, tipo incompatible,
-variable no declarada, condición no booleana, decimal asignado a entero y
-variable usada fuera de su ámbito):
+**Código de tres direcciones**
 
 ```
-entero x = 5;
-entero x = 6;
-texto t = 10;
-entero r = y + 1;
-mientras (x) {
-    x = 1.5;
-}
-si (1 < 2) {
-    entero a = 1;
-}
-a = 2;
+// Código intermedio de tres direcciones (capítulo 6)
+    // Programa de prueba para el traductor
+    i = 1
+    suma = 0
+L1:
+    ifFalse i <= 10 goto L2
+    suma = suma + i
+    i = i + 1
+    goto L1
+L2:
+    t1 = suma / 4
+    promedio = (float) t1
+    saludo = "hola" + " mundo"
+    t2 = suma > 50
+    t3 = promedio >= 13.0
+    t4 = t2 && t3
+    ifFalse t4 goto L3
+    descuento = 5
+    suma = suma - descuento
+    goto L4
+L3:
+    suma = 0
+L4:
+    return suma
 ```
 
-## Ejecutable
+Al ejecutar los tres programas (Python, JavaScript y C++) el resultado es el mismo: **50**.
 
-Además del código fuente, el proyecto incluye un ejecutable autosuficiente
-(no requiere tener Python instalado) generado con **PyInstaller**:
+### 3.7 Errores que detecta
 
-- `EJECUTABLE/AnalizadorCompiladores.exe` — ejecutable final. Incluye
-  empaquetado adentro el analizador léxico (`analizador.exe`). Al abrirlo,
-  gestiona los archivos `.txt` que estén en esa misma carpeta (por eso
-  `Prueba.txt`, `Prueba 2.txt` y los archivos `Semantico *.txt` están ahí
-  también, como ejemplos listos para probar).
+| Tipo | Ejemplo | Mensaje |
+| --- | --- | --- |
+| Léxico | `entero z = 5 @ 3;` | `Error léxico: simbolo no reconocido: @` |
+| Sintaxis | `entero a = 1` (falta `;`) | `Error de sintaxis: se esperaba ';' ...` |
+| Sintaxis | bloque sin cerrar | `falta cerrar un bloque con '}'` |
+| Variable no declarada | `entero b = a + c;` sin declarar `c` | `la variable 'c' no ha sido declarada` |
+| Redeclaración | `entero a = 1; entero a = 2;` | `ya fue declarada en este ámbito` |
+| Tipos | `entero a = "hola";` | `no se puede asignar texto a 'a' (que es entero)` |
+| Tipos | `decimal a = 5.0 % 2;` | `el operador '%' solo acepta enteros` |
 
-### Cómo regenerar el ejecutable (opcional)
+### 3.8 Limitaciones conocidas
 
-El ejecutable es una copia del código del momento en que se generó: si se
-modifica algún `.py`, hay que volver a generarlo. Para eso basta con hacer
-doble clic en `generar_exe.bat`, que cierra el programa si está abierto y
-genera el ejecutable directamente en `EJECUTABLE/`.
+- El lenguaje no tiene instrucción de impresión ni funciones definidas por el usuario, así que el único resultado observable de un programa es el valor de `retorno`.
+- En C++, el valor de `retorno` se usa como código de salida del programa (el sistema operativo lo limita a 0–255).
+- Los mensajes de error no indican número de línea, porque los tokens de `analizador.exe` no incluyen esa información.
+- La división entera y el módulo con operandos negativos pueden diferir entre lenguajes (el lenguaje fuente no tiene números negativos literales).
 
-Equivale a ejecutar (requiere `pip install pyinstaller`):
+---
 
-```
-python -m PyInstaller --noconfirm --onefile --windowed --add-data "analizador.exe;." --name AnalizadorCompiladores --distpath EJECUTABLE interfaz.py
-```
+## 4. Estructura del proyecto
 
-La configuración de este empaquetado queda guardada en
-`AnalizadorCompiladores.spec`.
+| Archivo | Función |
+| --- | --- |
+| `analizador.l` | Código fuente Flex (análisis léxico) |
+| `lex.yy.c`, `analizador.exe` | Generados por Flex y gcc |
+| `parser.py` | Analizador sintáctico (descenso recursivo) |
+| `semantico.py` | Analizador semántico (tabla de símbolos y tipos) |
+| `traductor.py` | **Traductor de código** (AST + generadores) |
+| `interfaz.py` | Interfaz gráfica (Tkinter) |
+| `generar_exe.bat` | Genera `EJECUTABLE\AnalizadorCompiladores.exe` con PyInstaller |
+| `DOCUMENTACION.md` | Este documento |
+| `EJECUTABLE/` | Ejecutable final y archivos `.txt` de prueba |
 
-## Estructura del proyecto
+### Cómo usar el traductor
 
-- `analizador.l` — código fuente del analizador léxico, escrito en Flex.
-- `lex.yy.c` — código C generado automáticamente por Flex a partir de `analizador.l`.
-- `analizador.exe` — ejecutable compilado del analizador léxico puro (sin
-  interfaz). Es un componente interno que usa `interfaz.py` por detrás,
-  necesario solo para correr el proyecto desde el código fuente.
-
-  > **Nota:** `analizador.exe` no está pensado para abrirse directamente
-  > con doble clic (es un programa de consola que espera recibir un
-  > archivo como argumento). Para eso está
-  > `EJECUTABLE/AnalizadorCompiladores.exe`.
-- `parser.py` — analizador sintáctico (descenso recursivo) en Python.
-  Recibe la lista de tokens que produce `analizador.exe` y determina si
-  forman un programa válido según la gramática de la sección
-  "Análisis sintáctico", generando además el log de derivación paso a paso.
-- `semantico.py` — analizador semántico en Python. Recibe los mismos tokens
-  y, con una tabla de símbolos por ámbitos, verifica declaraciones, usos de
-  variables y compatibilidad de tipos, devolviendo la tabla de símbolos, el
-  log de comprobaciones y la lista de errores.
-- `interfaz.py` — interfaz gráfica en Python/Tkinter que gestiona los
-  archivos, ejecuta el analizador léxico y, según el modo elegido
-  ("Sintáctico" o "Semántico"), también el sintáctico y el semántico.
-- `generar_exe.bat` — script que regenera el ejecutable en `EJECUTABLE/`
-  con un doble clic.
-- `AnalizadorCompiladores.spec` — configuración de empaquetado generada por
-  PyInstaller, usada para regenerar el ejecutable.
-- `EJECUTABLE/` — carpeta con el ejecutable final
-  (`AnalizadorCompiladores.exe`) y los archivos `.txt` de ejemplo.
-
-## Autor
-
-Cristopher Grullón Pérez 1-17-0292.
+1. Abrir `AnalizadorCompiladores.exe` (o ejecutar `python interfaz.py`).
+2. Elegir **Traductor** en el desplegable *Analizador*.
+3. Elegir el lenguaje destino.
+4. Abrir o escribir un programa y pulsar **Analizar**.
+5. Se muestran los tokens, el árbol sintáctico y el código traducido. El botón de guardar escribe el resultado con la extensión del lenguaje destino.
