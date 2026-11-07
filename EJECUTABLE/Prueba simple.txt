@@ -1,0 +1,12 @@
+// Prueba simple: suma los numeros del 1 al 5 y le agrega 5
+entero i = 1;
+entero total = 0;
+mientras (i <= 5) {
+    total = total + i;
+    i = i + 1;
+}
+si (total > 10) {
+    total = total + 5;
+}
+retorno total;
+

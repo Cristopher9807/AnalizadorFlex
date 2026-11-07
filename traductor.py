@@ -808,3 +808,38 @@ def traducir(salida_lexer, destino):
     tokens = leer_tokens(salida_lexer)
     prog = construir_ast(tokens)
     return generar(prog, destino), arbol_texto(prog)
+
+
+# ----------------------------------------------------------------------------
+# 6. Página web para ejecutar el JavaScript traducido
+# ----------------------------------------------------------------------------
+def generar_html(codigo_js, titulo="Programa traducido"):
+    """Envuelve el JavaScript generado en una página HTML.
+
+    La página se ve en blanco (solo tiene un <script>). El resultado del
+    programa (el valor del 'retorno') aparece en la consola del navegador (F12),
+    y la función main() queda disponible para volver a llamarla a mano.
+    """
+    # 1) Quitar la llamada final "main();" que trae el JavaScript generado
+    cuerpo = codigo_js.rstrip()
+    if cuerpo.endswith("main();"):
+        cuerpo = cuerpo[: -len("main();")].rstrip()
+    # 2) Evitar que un texto del programa que contenga "</script>" rompa la página
+    cuerpo = cuerpo.replace("</", "<\\/")
+    # 3) Llamar a main() desde la página y mostrar el resultado en la consola
+    cuerpo += '\n\nconsole.log("Resultado del programa:", main());'
+    titulo = (titulo or "Programa traducido").replace("<", "").replace(">", "")
+    return f"""<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>{titulo}</title>
+</head>
+<body>
+<!-- Página generada por el traductor. Abre la consola (F12) para ver el resultado. -->
+<script>
+{cuerpo}
+</script>
+</body>
+</html>
+"""
