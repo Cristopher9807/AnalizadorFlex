@@ -2,13 +2,13 @@
 
 **Autor:** Cristopher Grullón Pérez (1-17-0292)
 **Materia:** Compiladores, UTESA
-**Capítulo:** 6 – Generación de código intermedio
+**Proyecto final:** compilador unificado (léxico, sintáctico, semántico, tabla de símbolos, código intermedio y traducción a otro lenguaje)
 
 ---
 
 ## 1. Descripción general
 
-El proyecto es un compilador pequeño, construido por etapas (una por capítulo), con una interfaz gráfica en Tkinter. La última etapa es un **traductor de código**: toma un programa escrito en nuestro lenguaje (palabras clave en español) y lo traduce a otro lenguaje.
+El proyecto es un compilador pequeño, construido por etapas (una por capítulo), con una interfaz gráfica en Tkinter. Todas las etapas están unidas en **una sola aplicación**: el modo **Todos los Analizadores** ejecuta una tras otra las fases léxica, sintáctica, semántica (con tabla de símbolos), de código intermedio y de traducción. La última etapa es un **traductor de código**: toma un programa escrito en nuestro lenguaje (palabras clave en español) y lo traduce a otro lenguaje.
 
 | Destino | Extensión | Qué es |
 | --- | --- | --- |
@@ -32,10 +32,10 @@ El proyecto es un compilador pequeño, construido por etapas (una por capítulo)
  [ semantico.py ]               Etapa semántica   -> tabla de símbolos y tipos
         |
         v
- [ traductor.py ]               Traductor         -> AST + comprobación de tipos
-        |                                            + generador de código
+ [ traductor.py ]               Código intermedio -> código de tres direcciones
+        |
         v
- Python / JavaScript / C++ / código de tres direcciones
+ [ traductor.py ]               Traducción        -> Python / JavaScript / C++
 ```
 
 El traductor sigue la estructura clásica de un compilador:
@@ -195,7 +195,7 @@ retorno suma;
 
 ### 3.5 Código de tres direcciones (representación intermedia)
 
-El cuarto destino no es un lenguaje de programación, sino el **código intermedio** del capítulo 6. Cada instrucción tiene como máximo un operador:
+El cuarto destino no es un lenguaje de programación, sino el **código intermedio** del capítulo 6. En el modo **Todos los Analizadores** siempre se genera y se muestra antes del código del lenguaje destino. Cada instrucción tiene como máximo un operador:
 
 | Forma | Ejemplo |
 | --- | --- |
@@ -359,14 +359,97 @@ Al ejecutar los tres programas (Python, JavaScript y C++) el resultado es el mis
 | `semantico.py` | Analizador semántico (tabla de símbolos y tipos) |
 | `traductor.py` | **Traductor de código** (AST + generadores) |
 | `interfaz.py` | Interfaz gráfica (Tkinter) |
-| `generar_exe.bat` | Genera `EJECUTABLE\AnalizadorCompiladores.exe` con PyInstaller |
-| `DOCUMENTACION.md` | Este documento |
+| `AnalizadorCompiladores.spec` | Configuración de PyInstaller para generar el `.exe` |
+| `README.md` | Este documento |
 | `EJECUTABLE/` | Ejecutable final y archivos `.txt` de prueba |
 
-### Cómo usar el traductor
+---
 
-1. Abrir `AnalizadorCompiladores.exe` (o ejecutar `python interfaz.py`).
-2. Elegir **Traductor** en el desplegable *Analizador*.
-3. Elegir el lenguaje destino.
-4. Abrir o escribir un programa y pulsar **Analizar**.
-5. Se muestran los tokens, el árbol sintáctico y el código traducido. El botón de guardar escribe el resultado con la extensión del lenguaje destino.
+## 5. Analizador semántico y tabla de símbolos
+
+`semantico.py` recorre los tokens con una pila de ámbitos: cada bloque `{ }` abre un ámbito nuevo y al cerrarlo se descarta. Comprueba que las variables estén declaradas, que no se repitan en el mismo ámbito y que los tipos sean compatibles (reglas de la sección 2.4).
+
+La **tabla de símbolos** se muestra con tres columnas:
+
+| Nombre | Tipo | Ámbito |
+| --- | --- | --- |
+| `x` | `entero` | global |
+| `y` | `decimal` | global |
+| `w` | `entero` | bloque 1 |
+
+Aparece en el modo **Semántico** y también en **Todos los Analizadores**.
+
+---
+
+## 6. Modos de la interfaz
+
+| Modo | Qué muestra |
+| --- | --- |
+| Léxico | Los tokens que reconoce `analizador.exe` |
+| Sintáctico | Si el programa cumple la gramática, con su derivación |
+| Semántico | Tabla de símbolos y comprobaciones de tipos |
+| Traductor | Tokens, AST y código en el lenguaje destino elegido |
+| **Todos los Analizadores** | Las cinco fases en orden: léxico, sintáctico, semántico (tabla de símbolos), código intermedio de tres direcciones y traducción al lenguaje destino |
+
+Si una fase falla, el proceso se detiene y se indica en qué fase ocurrió el error.
+
+Botones de salida (modos Traductor y Todos los Analizadores):
+
+- **Guardar traducción:** guarda el código con la extensión del lenguaje destino.
+- **Guardar página web:** si el destino es JavaScript, genera un `.html` que ejecuta el programa y muestra el resultado de `main()` en la consola del navegador (F12), y lo abre.
+
+---
+
+## 7. Cómo probar el compilador
+
+1. Abrir `EJECUTABLE/AnalizadorCompiladores.exe` (o ejecutar `python interfaz.py`).
+2. Elegir **Todos los Analizadores** y un lenguaje destino.
+3. Abrir un archivo de la carpeta `EJECUTABLE/` y pulsar **Analizar**.
+
+| Archivo | Qué prueba | Resultado esperado |
+| --- | --- | --- |
+| `Traduccion correcto.txt` | Programa completo con `mientras`, `si/sino`, texto y decimal | Compilación correcta; `retorno` = 50 |
+| `Semantico correcto.txt` | Ámbitos y ampliación `decimal ← entero` | Compilación correcta con tabla de símbolos |
+| `Traduccion errores.txt` | Variable no declarada y `texto t = 5;` | Error semántico en la fase 3 |
+| `Prueba.txt`, `Prueba 2.txt`, `Prueba simple.txt`, `apocaliptico.txt` | Pruebas de las etapas léxica y sintáctica | Según el contenido de cada archivo |
+
+---
+
+## 8. Instalación en una computadora nueva (Windows)
+
+Para **usar** el ejecutable no hace falta instalar nada. Para **editar el código** o **regenerar el `.exe`**:
+
+1. **Python 3.10 o superior** desde python.org. Marcar *Add python.exe to PATH*. Incluye Tkinter. Comprobar con `python --version` y `python -m tkinter`.
+2. **Git para Windows** desde git-scm.com. Comprobar con `git --version`.
+3. **Visual Studio Code** con las extensiones *Python* y *C/C++*.
+4. **PyInstaller:** `pip install pyinstaller`.
+5. **Solo si se modifica `analizador.l`:** instalar MSYS2 (msys2.org), abrir la consola *MSYS2 UCRT64* y ejecutar `pacman -S mingw-w64-ucrt-x86_64-gcc` y `pacman -S winflexbison3`; añadir `C:\msys64\ucrt64\bin` al PATH. Luego:
+
+```
+win_flex -o lex.yy.c analizador.l
+gcc lex.yy.c -o analizador.exe
+```
+
+Descargar el proyecto:
+
+```
+git clone https://github.com/Cristopher9807/AnalizadorFlex.git
+cd AnalizadorFlex
+python interfaz.py
+```
+
+Regenerar el ejecutable:
+
+```
+pyinstaller --clean AnalizadorCompiladores.spec
+```
+
+El `.exe` queda en `dist\`; copiarlo a `EJECUTABLE\`.
+
+Subir los cambios:
+
+```
+git add .
+git commit -m "Descripción del cambio"
+git push
+```

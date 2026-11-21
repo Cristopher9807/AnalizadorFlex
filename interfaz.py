@@ -27,6 +27,7 @@ else:
 PREFIJO_SEMANTICO = "Semantico"
 MODO_TODOS = "Todos los Analizadores"
 MODOS_CON_TRADUCCION = ("Traductor", MODO_TODOS)
+DESTINO_INTERMEDIO = "Código de tres direcciones"   # el código intermedio del compilador
 TITULO_BASE = "Analizador Léxico / Sintáctico / Semántico / Traductor"
 
 ventana = tk.Tk()
@@ -291,6 +292,19 @@ def escribir(texto):
     texto_resultado.insert(tk.END, texto)
 
 
+def escribir_tabla_simbolos(historial):
+    """Escribe la tabla de símbolos (nombre, tipo, ámbito). La usan el modo
+    Semántico y el modo 'Todos los Analizadores'."""
+    escribir("--- Tabla de símbolos ---\n")
+    if historial:
+        escribir(f"{'Nombre':<15}{'Tipo':<12}{'Ámbito'}\n")
+        for nombre, tipo, nivel in historial:
+            etiqueta = "global" if nivel == 0 else f"bloque {nivel}"
+            escribir(f"{nombre:<15}{tipo:<12}{etiqueta}\n")
+    else:
+        escribir("(vacía)\n")
+
+
 def guardar_traduccion():
     """Guarda el último código traducido con la extensión del lenguaje destino."""
     if not ultima_traduccion["codigo"]:
@@ -350,8 +364,9 @@ def guardar_pagina_web():
 
 def compilar_todas_las_fases(salida_lexer, hay_error_lexico, destino):
     """Ejecuta las fases en orden y se detiene en la primera que falle:
-    1) léxico  2) sintáctico  3) semántico  4) traducción.
-    Devuelve (codigo, arbol) si todo salió bien; si no, devuelve None."""
+    1) léxico  2) sintáctico  3) semántico (con tabla de símbolos)
+    4) código intermedio  5) traducción al lenguaje destino.
+    Devuelve (codigo, arbol, historial, intermedio) si todo salió bien; si no, None."""
     escribir("=== FASES DEL COMPILADOR ===\n")
 
     # ---------- Fase 1: léxico ----------
@@ -379,25 +394,44 @@ def compilar_todas_las_fases(salida_lexer, hay_error_lexico, destino):
         for e in errores:
             escribir(f"  • {e}\n")
         return None
-    escribir("Fase 3 - Semántico:   correcto\n")
+    escribir("Fase 3 - Semántico:   correcto (tabla de símbolos generada)\n")
 
-    # ---------- Fase 4: traducción ----------
+    # ---------- Fase 4: código intermedio (tres direcciones) ----------
+    try:
+        intermedio, _ = traducir(salida_lexer, DESTINO_INTERMEDIO)
+    except ErrorTraduccion as e:
+        escribir("Fase 4 - Código intermedio:  ERROR\n")
+        escribir(f"\nERROR AL GENERAR EL CÓDIGO INTERMEDIO: {e}\n")
+        return None
+    escribir("Fase 4 - Código intermedio: correcto\n")
+
+    # ---------- Fase 5: traducción al lenguaje destino ----------
     try:
         codigo, arbol = traducir(salida_lexer, destino)
     except ErrorTraduccion as e:
-        escribir("Fase 4 - Traducción:  ERROR\n")
+        escribir("Fase 5 - Traducción:  ERROR\n")
         escribir(f"\nERROR DE TRADUCCIÓN: {e}\n")
         return None
-    escribir(f"Fase 4 - Traducción:  correcta (destino: {destino})\n")
-    return codigo, arbol
+    escribir(f"Fase 5 - Traducción:  correcta (destino: {destino})\n")
+    return codigo, arbol, historial, intermedio
 
 
-def mostrar_traduccion(codigo, arbol, destino, mensaje_final):
-    """Escribe el árbol, el código traducido y el mensaje final, y guarda la traducción."""
+def mostrar_traduccion(codigo, arbol, destino, mensaje_final, historial=None, intermedio=None):
+    """Escribe (en este orden) la tabla de símbolos, el árbol, el código intermedio,
+    el código traducido y el mensaje final. Guarda la traducción para los botones
+    'Guardar traducción' y 'Guardar página web'.
+    La tabla de símbolos y el código intermedio solo se muestran si se reciben
+    (el modo 'Todos los Analizadores' los envía)."""
     ultima_traduccion["codigo"] = codigo
     ultima_traduccion["destino"] = destino
+    if historial is not None:
+        escribir("\n")
+        escribir_tabla_simbolos(historial)
     escribir("\n--- Árbol sintáctico (AST) ---\n")
     escribir(arbol.rstrip("\n") + "\n")
+    if intermedio is not None and destino != DESTINO_INTERMEDIO:
+        escribir("\n--- Código intermedio (tres direcciones) ---\n")
+        escribir(intermedio)
     escribir(f"\n--- Código traducido a {destino} ---\n")
     escribir(codigo)
     escribir("\n--- Resultado ---\n")
@@ -478,9 +512,10 @@ def analizar():
         destino = destino_var.get()
         resultado_traduccion = compilar_todas_las_fases(resultado.stdout, hay_error_lexico, destino)
         if resultado_traduccion is not None:
-            codigo, arbol = resultado_traduccion
+            codigo, arbol, historial, intermedio = resultado_traduccion
             mostrar_traduccion(codigo, arbol, destino,
-                               "COMPILACIÓN CORRECTA. Todas las fases pasaron sin errores.")
+                               "COMPILACIÓN CORRECTA. Todas las fases pasaron sin errores.",
+                               historial, intermedio)
 
     else:
         # Sintáctico y Semántico necesitan que no haya errores léxicos
@@ -513,14 +548,7 @@ def analizar():
                 else:
                     ok, log_sem, errores, historial = analizar_semantica(tokens)
 
-                    escribir("--- Tabla de símbolos ---\n")
-                    if historial:
-                        escribir(f"{'Nombre':<15}{'Tipo':<12}{'Ámbito'}\n")
-                        for nombre, tipo, nivel in historial:
-                            etiqueta = "global" if nivel == 0 else f"bloque {nivel}"
-                            escribir(f"{nombre:<15}{tipo:<12}{etiqueta}\n")
-                    else:
-                        escribir("(vacía)\n")
+                    escribir_tabla_simbolos(historial)
 
                     escribir("\n--- Comprobaciones realizadas ---\n")
                     for paso in log_sem:
